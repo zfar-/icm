@@ -56,6 +56,24 @@ def build_feature_map(input_shape):
     model.summary()
     return model
 
+def finalLoss(layers, lmd=1.0):
+    x_1, x_2 = layers
+    return (-lmd * x_1 + x_2)
+
+def lossOfActionLayers (layers):
+    x_1, x_2 = layers
+    return -K.sum(x_1 + K.log(x_2 + K.epsilon()),axis=-1 )
+
+def losses (layers , beta = 0.01):
+	x_1 , x_2 = layers
+	return (beta * x_1 +(1.0 - beta) * x_2 )
+
+
+def lossOfFeaturedVectors(layers):
+    x_1, x_2 = layers
+    return (0.5 * (K.sum(K.square(x_1 - x_2), axis=-1)) / 2)
+
+
 def inverse_model(output_dim=6):
     """
     s_t, s_t+1 -> a_t
@@ -66,7 +84,7 @@ def inverse_model(output_dim=6):
         h = Concatenate()([ft0,ft1])
         print("Inverse concate shape :: ", K.shape(h))
         h = Dense(256, activation='relu')(h)
-        h = Dense(output_dim, activation='sigmoid')(h)
+        h = Dense(output_dim, activation='softmax')(h)
         print(" stats ft0 {} , ft1 {} ".format(ft0, ft1))
         return h
     return func
@@ -90,7 +108,7 @@ def build_icm_model(state_shape, action_shape, lmd=1.0, beta=0.01):
 
     s_t0 = Input(shape=state_shape, name="state0") # 42 x 42
     s_t1 = Input(shape=state_shape, name="state1") # 42 x 42
-    a_t = Input(shape=action_shape, name="action") #4
+    a_t = Input(shape=action_shape, name="action") #6
 
     print("State Shape {}".format(state_shape)) #(42,42)
 
@@ -111,37 +129,18 @@ def build_icm_model(state_shape, action_shape, lmd=1.0, beta=0.01):
 
     print("forward :: {} , inverse :: {} " .format( act_hat ,f_t1_hat))
 
-    # r_in = Concatenate(axis=-1)([f_t1 , f_t1_hat])
-    # r_in = Lambda(lambda x:  0.5 * K.sum(K.square(x[0] - x[1] ) , axis=-1 ) , output_shape=(1,) , name="reward_intrinsic") (r_in)
-        # merge([f_t1, f_t1_hat], mode=lambda x: 0.5 * K.sum(K.square(x[0] - x[1]), axis=-1),
-        #          output_shape=(1,), name="reward_intrinsic")
-
-    # l_i = merge([a_t, act_hat], mode=lambda x: -K.sum(x[0] * K.log(x[1] + K.epsilon()), axis=-1),
-    #             output_shape=(1,))
-
-    # l_i = Concatenate()([a_t, act_hat])
-
-    # print("L_i",K.shape(l_i))
-    # l_i = Lambda(lambda l_i: -K.sum(l_i[0] * K.log(l_i[1] + K.epsilon())), output_shape=(1,))
-
-    # print("L_i",K.shape(l_i))
-    # print("Shape of the r_in : {} and l_i : {}".format(K.shape(r_in) , K.shape(l_i)))
-    #
-    # print("is it worked ..... ")
-    # loss0 = Concatenate()([r_in , l_i])
+    l_i = Lambda(lossOfActionLayers , output_shape=(1,))([a_t , act_hat])
 
 
-    # loss0 = Lambda(lambda x:  beta * x[0] + (1.0 - beta) * x[1], output_shape=(1,) ) (loss0)
-    # loss0 = merge([r_in, l_i], mode=lambda x: beta * x[0] + (1.0 - beta) * x[1], output_shape=(1,))
+    r_in = Lambda (lossOfFeaturedVectors,  name="reward_intrinsic" , output_shape=(1,))([f_t0, f_t1])
 
-    # rwd = Input(shape=(1,))
 
-    # loss = Concatenate()([rwd , loss0])
-    # loss = Lambda(lambda x: (-lmd * x[0].T + x[1]).T, output_shape=(1,) )
-    # loss = merge([rwd, loss0], mode=lambda x: (-lmd * x[0].T + x[1]).T, output_shape=(1,))
+    loss0 = Lambda( losses , output_shape=(1,))([r_in,l_i])
 
-    return 0
-    # return Model([s_t0, s_t1, a_t, rwd], loss)
+    rwd =Input(shape=(1,))
+    loss = Lambda(finalLoss, output_shape=(1,))([rwd,loss0])
+
+    return Model([s_t0,s_t1,a_t,rwd], loss)
 
 def get_reward_intrinsic(model, x):
     return K.function([model.get_layer("state0").input,
@@ -152,7 +151,7 @@ def get_reward_intrinsic(model, x):
 if __name__ == "__main__":
     import numpy as np
     icm = build_icm_model((42,42), (6, ))
-    #icm.summary()
-    #print(get_reward_intrinsic(icm, [np.zeros((1, 42, 42)), np.zeros((1, 42, 42)), np.zeros((1, 6))]))
+    icm.summary()
+    print(get_reward_intrinsic(icm, [np.zeros((1, 42, 42)), np.zeros((1, 42, 42)), np.zeros((1, 6))]))
     #from keras.utils.vis_utils import plot_model
     #plot_model(icm, to_file='model.png', show_shapes=True)

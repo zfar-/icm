@@ -129,10 +129,11 @@ def build_icm_model(state_shape, action_shape, lmd=1.0, beta=0.01):
 
     print("forward :: {} , inverse :: {} " .format( act_hat ,f_t1_hat))
 
+    r_in = Lambda (lossOfFeaturedVectors,  name="reward_intrinsic" , output_shape=(1,))([f_t0, f_t1])
+
     l_i = Lambda(lossOfActionLayers , output_shape=(1,))([a_t , act_hat])
 
 
-    r_in = Lambda (lossOfFeaturedVectors,  name="reward_intrinsic" , output_shape=(1,))([f_t0, f_t1])
 
 
     loss0 = Lambda( losses , output_shape=(1,))([r_in,l_i])
@@ -155,3 +156,5 @@ if __name__ == "__main__":
     print(get_reward_intrinsic(icm, [np.zeros((1, 42, 42)), np.zeros((1, 42, 42)), np.zeros((1, 6))]))
     #from keras.utils.vis_utils import plot_model
     #plot_model(icm, to_file='model.png', show_shapes=True)
+    from keras.utils.vis_utils import plot_model
+    plot_model(icm, to_file='icm_model.png', show_shapes=True, show_layer_names=True)
